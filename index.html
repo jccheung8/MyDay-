@@ -1,0 +1,765 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>My Day</title>
+<link rel="icon" href="data:,">
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Newsreader:ital,wght@0,500;0,600;1,500&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap');
+
+  :root {
+    --surface: #f6f2ec; --card: #fffdf9; --ink: #24211d; --ink-soft: #726b60;
+    --ink-faint: #a89f91; --line: #e3dbcc; --work: #4a5aa0; --work-soft: #e6e8f3;
+    --personal: #b45c34; --personal-soft: #f4e2d3; --priority: #a6791e; --danger: #a5433a;
+    color-scheme: light dark;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --surface: #1c1a16; --card: #242019; --ink: #ece6db; --ink-soft: #a89e8f;
+      --ink-faint: #756c5f; --line: #3a352c; --work: #949fdd; --work-soft: #2a2c42;
+      --personal: #e2926a; --personal-soft: #3c2c22; --priority: #d6a44c; --danger: #d6746a;
+    }
+  }
+  :root[data-theme="dark"] {
+    --surface: #1c1a16; --card: #242019; --ink: #ece6db; --ink-soft: #a89e8f;
+    --ink-faint: #756c5f; --line: #3a352c; --work: #949fdd; --work-soft: #2a2c42;
+    --personal: #e2926a; --personal-soft: #3c2c22; --priority: #d6a44c; --danger: #d6746a;
+  }
+
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; margin: 0; background: var(--surface); }
+  body {
+    font-family: "IBM Plex Sans", system-ui, sans-serif;
+    color: var(--ink); font-size: 15px; display: flex; justify-content: center;
+    padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  .mono { font-family: "IBM Plex Mono", monospace; font-variant-numeric: tabular-nums; }
+  button { font-family: inherit; }
+  :focus-visible { outline: 2px solid var(--work); outline-offset: 2px; }
+
+  #shell { width: 100%; max-width: 480px; height: 100%; background: var(--surface); position: relative; overflow: hidden; display: flex; flex-direction: column; }
+  @media (min-width: 481px) { #shell { box-shadow: 0 12px 40px rgba(36,33,29,0.10); border-left: 1px solid var(--line); border-right: 1px solid var(--line); } }
+
+  /* ---- Login / setup gate ---- */
+  #gate { flex: 1; display: flex; flex-direction: column; justify-content: center; padding: 32px 28px; }
+  #gate .eyebrow { font-family: "IBM Plex Mono", monospace; font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-faint); margin: 0 0 8px; }
+  #gate h1 { font-family: "Newsreader", Georgia, serif; font-style: italic; font-weight: 500; font-size: 30px; margin: 0 0 26px; }
+  .field-label { font-size: 12px; color: var(--ink-soft); margin: 14px 0 6px; }
+  .text-input { width: 100%; padding: 12px 14px; border-radius: 8px; border: 1px solid var(--line); background: var(--card); color: var(--ink); font-size: 14.5px; font-family: inherit; outline: none; }
+  .text-input:focus { border-color: var(--work); }
+  .primary-btn { width: 100%; text-align: center; padding: 14px; border-radius: 26px; font-size: 14.5px; font-weight: 500; border: none; cursor: pointer; background: var(--ink); color: var(--card); margin-top: 20px; }
+  .primary-btn:disabled { opacity: .55; cursor: default; }
+  .gate-error { color: var(--danger); font-size: 13px; margin-top: 12px; min-height: 1em; }
+  .gate-info { color: var(--work); font-size: 13px; margin-top: 12px; line-height: 1.5; background: var(--work-soft); border-radius: 8px; padding: 10px 12px; }
+  .mode-toggle { display: block; width: 100%; text-align: center; background: none; border: none; color: var(--ink-soft); font-size: 13px; cursor: pointer; padding: 14px 0 0; }
+  .mode-toggle span { color: var(--work); font-weight: 500; }
+  .gate-note { color: var(--ink-faint); font-size: 12.5px; margin-top: 22px; line-height: 1.5; }
+  .gate-note code { background: var(--card); border: 1px solid var(--line); padding: 1px 5px; border-radius: 4px; }
+
+  #content { flex: 1; overflow-y: auto; padding: 22px 20px 24px; }
+  .eyebrow { font-family: "IBM Plex Mono", monospace; font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-faint); margin: 0 0 6px; }
+  .top-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+  .greeting { font-family: "Newsreader", Georgia, serif; font-style: italic; font-weight: 500; font-size: 24px; margin: 0 0 18px; text-wrap: balance; }
+  .page-title { font-family: "Newsreader", Georgia, serif; font-weight: 600; font-size: 24px; }
+  .signout-link { background: none; border: none; color: var(--ink-faint); font-size: 12px; cursor: pointer; padding: 4px 0; white-space: nowrap; }
+
+  .chip-row { display: flex; gap: 8px; margin-bottom: 22px; flex-wrap: wrap; }
+  .chip { font-size: 12.5px; font-weight: 500; padding: 6px 14px; border-radius: 20px; cursor: pointer; color: var(--ink-soft); background: transparent; border: 1px solid var(--line); }
+  .chip.active { background: var(--ink); color: var(--card); border-color: var(--ink); }
+  .chip.work.active { background: var(--work-soft); color: var(--work); border-color: var(--work-soft); }
+  .chip.personal.active { background: var(--personal-soft); color: var(--personal); border-color: var(--personal-soft); }
+
+  .section-label { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-faint); margin: 0 0 10px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 8px; }
+  .task-row { display: flex; align-items: flex-start; gap: 11px; padding: 12px 14px; margin-bottom: 8px; cursor: pointer; }
+  .task-row.done { opacity: .55; }
+  .checkbox { width: 19px; height: 19px; border-radius: 50%; border: 1.8px solid var(--dot); flex-shrink: 0; margin-top: 1px; background: none; padding: 0; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+  .checkbox.checked { background: var(--dot); }
+  .task-body { flex: 1; min-width: 0; }
+  .task-title { font-size: 14px; font-weight: 500; }
+  .task-title.strike { text-decoration: line-through; color: var(--ink-soft); font-weight: 400; }
+  .task-time { font-size: 12px; color: var(--ink-soft); white-space: nowrap; padding-top: 1px; }
+  .sub-progress { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+  .bar-track { width: 56px; height: 4px; background: var(--line); border-radius: 2px; overflow: hidden; }
+  .bar-fill { height: 100%; }
+  .empty-note { color: var(--ink-faint); font-size: 13px; padding: 10px 2px 4px; }
+
+  .note-row { display: flex; align-items: center; gap: 10px; padding: 10px 12px; margin-bottom: 8px; }
+  .note-row.expanded { align-items: flex-start; }
+  .note-text { flex: 1; font-size: 13px; color: var(--ink-soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+  .note-text.expanded { white-space: pre-wrap; overflow: visible; text-overflow: clip; }
+  .make-task-btn { font-size: 11.5px; font-weight: 500; white-space: nowrap; background: none; border: none; cursor: pointer; padding: 0; }
+
+  .capture-bar { position: sticky; bottom: 14px; display: flex; align-items: center; gap: 10px; background: var(--card); border: 1px solid var(--line); border-radius: 26px; padding: 6px 6px 6px 18px; box-shadow: 0 6px 18px rgba(36,33,29,0.10); margin-top: 18px; }
+  .capture-input { flex: 1; border: none; background: none; font-size: 13.5px; font-family: inherit; color: var(--ink); outline: none; padding: 8px 0; min-width: 0; }
+  .capture-input::placeholder { color: var(--ink-faint); }
+  .capture-btn { width: 36px; height: 36px; border-radius: 50%; background: var(--ink); border: none; display: flex; align-items: center; justify-content: center; flex-shrink: 0; cursor: pointer; }
+
+  #tabbar { flex-shrink: 0; height: 76px; border-top: 1px solid var(--line); background: var(--card); display: flex; align-items: center; justify-content: space-around; }
+  .tab { display: flex; flex-direction: column; align-items: center; gap: 4px; background: none; border: none; cursor: pointer; color: var(--ink-faint); padding: 6px 14px; }
+  .tab.active { color: var(--ink); }
+  .tab span { font-size: 10.5px; }
+  .tab.active span { font-weight: 500; }
+
+  .week-grid, .month-weekdays, .month-grid { display: grid; grid-template-columns: repeat(7, minmax(0,1fr)); }
+  .week-grid { gap: 4px; margin-bottom: 24px; }
+  .day-col { display: flex; flex-direction: column; align-items: center; gap: 7px; padding: 8px 0; border-radius: 10px; background: none; border: none; cursor: pointer; }
+  .day-col.selected { background: var(--card); }
+  .day-letter { font-size: 10px; color: var(--ink-faint); }
+  .day-num { width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 13px; color: var(--ink); }
+  .day-num.today { background: var(--ink); color: var(--card); font-weight: 500; }
+  .day-dots { display: flex; gap: 2px; height: 4px; }
+  .dot { width: 4px; height: 4px; border-radius: 50%; }
+
+  .week-nav, .month-nav { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
+  .nav-btn { background: none; border: none; cursor: pointer; color: var(--ink-faint); padding: 6px; }
+  .month-weekdays { margin-bottom: 2px; }
+  .month-weekdays span { text-align: center; font-size: 10px; color: var(--ink-faint); }
+  .month-grid { row-gap: 4px; margin-bottom: 24px; }
+  .month-cell { display: flex; flex-direction: column; align-items: center; gap: 5px; padding: 5px 0; background: none; border: none; cursor: pointer; border-radius: 8px; }
+  .month-cell.selected { background: var(--card); }
+  .month-num { width: 27px; height: 27px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12.5px; color: var(--ink); }
+  .month-num.today { background: var(--ink); color: var(--card); font-weight: 500; }
+  .month-num.outside { color: var(--ink-faint); }
+  .stat-row { display: flex; gap: 12px; margin-bottom: 20px; }
+  .stat-row .mono { font-size: 11.5px; }
+
+  #detail { position: absolute; inset: 0; background: var(--surface); display: flex; flex-direction: column; transform: translateX(100%); transition: transform .22s ease; }
+  #detail.open { transform: translateX(0); }
+  .detail-header { display: flex; align-items: center; justify-content: space-between; padding: 20px 20px 4px; flex-shrink: 0; }
+  .icon-btn { background: none; border: none; cursor: pointer; padding: 6px; color: var(--ink); display: flex; }
+  .cat-pill { font-size: 12px; font-weight: 500; padding: 5px 12px; border-radius: 20px; border: none; cursor: pointer; }
+  .cat-pill.work { background: var(--work-soft); color: var(--work); }
+  .cat-pill.personal { background: var(--personal-soft); color: var(--personal); }
+  #detail-content { flex: 1; overflow-y: auto; padding: 16px 20px 0; }
+  .field-title { width: 100%; border: none; background: none; font-size: 21px; font-weight: 600; font-family: inherit; color: var(--ink); margin-bottom: 10px; padding: 0; outline: none; resize: none; }
+  .field-detail { width: 100%; border: none; background: none; font-size: 14px; color: var(--ink-soft); font-family: inherit; line-height: 1.55; margin-bottom: 20px; padding: 0; outline: none; resize: none; min-height: 44px; }
+  .meta-row { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+  .meta-row input[type=datetime-local], .meta-row select { font-family: "IBM Plex Mono", monospace; font-size: 13px; color: var(--ink-soft); background: var(--card); border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px; }
+  .link-note { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--ink-soft); background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; margin-bottom: 4px; }
+  .link-note.expanded { align-items: flex-start; }
+  .divider { height: 1px; background: var(--line); margin: 20px 0; }
+  .progress-track { width: 100%; height: 5px; background: var(--line); border-radius: 3px; overflow: hidden; margin-bottom: 14px; }
+  .progress-fill { height: 100%; }
+  .subtask-row { display: flex; align-items: center; gap: 11px; padding: 11px 13px; margin-bottom: 8px; }
+  .subtask-title { flex: 1; font-size: 13.5px; }
+  .subtask-title.strike { text-decoration: line-through; color: var(--ink-soft); }
+  .subtask-del { background: none; border: none; color: var(--ink-faint); cursor: pointer; padding: 4px; }
+  .add-subtask { display: flex; align-items: center; gap: 9px; border: 1.5px dashed var(--line); border-radius: 8px; padding: 10px 13px; }
+  .add-subtask input { flex: 1; border: none; background: none; font-size: 13px; font-family: inherit; color: var(--ink); outline: none; }
+  .add-subtask input::placeholder { color: var(--ink-faint); }
+  .detail-footer { padding: 16px 20px; flex-shrink: 0; }
+  .primary-btn.undo { background: var(--card); color: var(--ink); border: 1px solid var(--line); }
+  .text-btn { width: 100%; text-align: center; background: none; border: none; font-size: 12.5px; color: var(--danger); cursor: pointer; padding: 4px; }
+  .sync-note { font-size: 11px; color: var(--ink-faint); text-align: center; padding: 4px 0 2px; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<div id="shell">
+
+  <div id="gate">
+    <div class="eyebrow">MY DAY</div>
+    <h1 id="gate-title">Sign in</h1>
+    <div class="field-label">Email</div>
+    <input class="text-input" id="login-email" type="email" autocomplete="username" />
+    <div class="field-label">Password</div>
+    <input class="text-input" id="login-password" type="password" autocomplete="current-password" />
+    <button class="primary-btn" id="login-btn">Sign in</button>
+    <button class="mode-toggle" id="mode-toggle" type="button">Need an account? <span>Sign up</span></button>
+    <div class="gate-error" id="login-error"></div>
+    <div class="gate-info" id="gate-info" hidden></div>
+    <div class="gate-note" id="gate-config-note" hidden>
+      Setup isn't finished yet: edit <code>config.js</code> with your Supabase project URL and anon key, then reload.
+    </div>
+  </div>
+
+  <div id="content" hidden></div>
+  <div id="tabbar" hidden>
+    <button class="tab" data-view="today" aria-label="Today">
+      <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="4.5"/><path d="M12 2v2M12 20v2M4.2 4.2l1.4 1.4M18.4 18.4l1.4 1.4M2 12h2M20 12h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4"/></svg>
+      <span>Today</span>
+    </button>
+    <button class="tab" data-view="week" aria-label="Week">
+      <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4"/></svg>
+      <span>Week</span>
+    </button>
+    <button class="tab" data-view="month" aria-label="Month">
+      <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4M8 13h.01M12 13h.01M16 13h.01M8 17h.01M12 17h.01"/></svg>
+      <span>Month</span>
+    </button>
+  </div>
+
+  <div id="detail" hidden>
+    <div class="detail-header">
+      <button class="icon-btn" id="detail-back" aria-label="Back">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 5l-7 7 7 7"/></svg>
+      </button>
+      <button class="cat-pill" id="detail-cat"></button>
+    </div>
+    <div id="detail-content"></div>
+  </div>
+
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="./config.js"></script>
+<script>
+(function () {
+  "use strict";
+
+  // ---------- Supabase client ----------
+  var CONFIG_OK = !!(window.SUPABASE_URL && window.SUPABASE_ANON_KEY &&
+    window.SUPABASE_URL.indexOf("YOUR_SUPABASE_URL") === -1 &&
+    window.SUPABASE_ANON_KEY.indexOf("YOUR_SUPABASE_ANON_KEY") === -1);
+
+  var LIBRARY_OK = !!(window.supabase && window.supabase.createClient);
+  if (CONFIG_OK && !LIBRARY_OK) {
+    // The Supabase library failed to load from its CDN (offline, blocked
+    // script, ad-blocker, etc). Fail visibly instead of crashing silently.
+    CONFIG_OK = false;
+    var noteEl = document.getElementById("gate-config-note");
+    noteEl.hidden = false;
+    noteEl.textContent = "Couldn't load a required library. Check your internet connection and reload the page. If this keeps happening, something on your network may be blocking cdn.jsdelivr.net.";
+  }
+
+  if (!CONFIG_OK) {
+    document.getElementById("gate-config-note").hidden = false;
+    document.getElementById("login-btn").disabled = true;
+  }
+
+  var sb = CONFIG_OK ? window.supabase.createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY) : null;
+
+  var ICONS = {
+    note: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 2h9l5 5v15H6z"/><path d="M15 2v5h5"/><path d="M9 13h6M9 17h6"/></svg>',
+    flag: '<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M4 2v20l8-6 8 6V2z"/></svg>',
+    check: '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M4 12l6 6L20 6"/></svg>',
+    chevronL: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 5l-7 7 7 7"/></svg>',
+    chevronRb: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 5l7 7-7 7"/></svg>',
+    plus: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14M5 12h14"/></svg>',
+    plusSmall: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>',
+    trash: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 6h16M9 6V4h6v2M6 6l1 14h10l1-14"/></svg>'
+  };
+  var WEEKDAY_LETTERS = ["M","T","W","T","F","S","S"];
+
+  function pad2(n) { return n < 10 ? "0" + n : "" + n; }
+  function isoDate(d) { return d.getFullYear() + "-" + pad2(d.getMonth() + 1) + "-" + pad2(d.getDate()); }
+  function parseISODate(s) { var p = s.split("-"); return new Date(+p[0], +p[1] - 1, +p[2]); }
+  function addDays(d, n) { var r = new Date(d); r.setDate(r.getDate() + n); return r; }
+  function mondayOf(d) { var wd = d.getDay(); var diff = (wd === 0 ? -6 : 1 - wd); return addDays(d, diff); }
+  function sameDate(a, b) { return isoDate(a) === isoDate(b); }
+  function monthLabel(d) { return d.toLocaleDateString(undefined, { month: "long" }); }
+  function dateOnly(dueAt) { return dueAt ? dueAt.slice(0, 10) : null; }
+  function hasTime(dueAt) { return !!dueAt && dueAt.length > 10; }
+  function fmtTime(dueAt) {
+    var t = dueAt.slice(11, 16).split(":"); var h = +t[0], m = t[1];
+    var ampm = h >= 12 ? "p" : "a"; h = h % 12; if (h === 0) h = 12;
+    return h + ":" + m + ampm;
+  }
+  function escapeHtml(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+  function autoGrow(el) {
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = el.scrollHeight + "px";
+  }
+
+  var today = new Date();
+  var TODAY_ISO = isoDate(today);
+
+  var state = {
+    view: "today", filter: "all", tasks: [], notes: [],
+    weekAnchor: TODAY_ISO, monthAnchor: TODAY_ISO, selectedDate: TODAY_ISO,
+    detailOpen: false, detailTaskId: null
+  };
+
+  function childrenOf(taskId) { return state.tasks.filter(function (t) { return t.parentTaskId === taskId; }); }
+  function taskById(id) { return state.tasks.find(function (t) { return t.id === id; }); }
+
+  // ---------- row <-> app-model mapping ----------
+  function mapTaskRow(r) {
+    return { id: r.id, title: r.title, detail: r.detail || "", category: r.category, status: r.status,
+      dueAt: r.due_at, priority: r.priority, parentTaskId: r.parent_task_id, sourceNoteId: r.source_note_id };
+  }
+  function mapNoteRow(r) {
+    return { id: r.id, body: r.body, createdAt: r.created_at, linkedTaskIds: r.linked_task_ids || [] };
+  }
+  function toTaskColumns(patch) {
+    var out = {};
+    if ("title" in patch) out.title = patch.title;
+    if ("detail" in patch) out.detail = patch.detail;
+    if ("category" in patch) out.category = patch.category;
+    if ("status" in patch) out.status = patch.status;
+    if ("dueAt" in patch) out.due_at = patch.dueAt;
+    if ("priority" in patch) out.priority = patch.priority;
+    if ("parentTaskId" in patch) out.parent_task_id = patch.parentTaskId;
+    if ("sourceNoteId" in patch) out.source_note_id = patch.sourceNoteId;
+    return out;
+  }
+
+  // ---------- persistence (Supabase) ----------
+  function refreshAll() {
+    return Promise.all([
+      sb.from("tasks").select("*").order("created_at", { ascending: true }),
+      sb.from("notes").select("*").order("created_at", { ascending: false })
+    ]).then(function (results) {
+      var taskRes = results[0], noteRes = results[1];
+      if (taskRes.error) console.warn("tasks fetch error", taskRes.error);
+      if (noteRes.error) console.warn("notes fetch error", noteRes.error);
+      state.tasks = (taskRes.data || []).map(mapTaskRow);
+      state.notes = (noteRes.data || []).map(mapNoteRow);
+      render();
+    });
+  }
+
+  function addTask(data) {
+    return sb.from("tasks").insert(toTaskColumns(data)).select().single().then(function (res) {
+      if (res.error) { console.warn("add task failed", res.error); return null; }
+      return refreshAll().then(function () { return res.data.id; });
+    });
+  }
+  function updateTask(id, patch) {
+    return sb.from("tasks").update(toTaskColumns(patch)).eq("id", id).then(function (res) {
+      if (res.error) console.warn("update task failed", res.error);
+      return refreshAll();
+    });
+  }
+  function deleteTaskCascade(id) {
+    // subtasks cascade automatically via the parent_task_id foreign key (ON DELETE CASCADE)
+    return sb.from("tasks").delete().eq("id", id).then(function (res) {
+      if (res.error) console.warn("delete task failed", res.error);
+      return refreshAll();
+    });
+  }
+  function addNote(body) {
+    return sb.from("notes").insert({ body: body, linked_task_ids: [] }).select().single().then(function (res) {
+      if (res.error) { console.warn("add note failed", res.error); return null; }
+      return refreshAll().then(function () { return res.data.id; });
+    });
+  }
+  function updateNote(id, patch) {
+    var cols = {};
+    if ("linkedTaskIds" in patch) cols.linked_task_ids = patch.linkedTaskIds;
+    if ("body" in patch) cols.body = patch.body;
+    return sb.from("notes").update(cols).eq("id", id).then(function (res) {
+      if (res.error) console.warn("update note failed", res.error);
+      return refreshAll();
+    });
+  }
+  function convertNoteToTask(note) {
+    var title = note.body.length > 80 ? note.body.slice(0, 80) + "…" : note.body;
+    addTask({ title: title, detail: "", category: "personal", status: "open", dueAt: null, priority: "medium", parentTaskId: null, sourceNoteId: note.id })
+      .then(function (taskId) {
+        if (!taskId) return;
+        updateNote(note.id, { linkedTaskIds: (note.linkedTaskIds || []).concat([taskId]) });
+        openDetail(taskId);
+      });
+  }
+
+  // ---------- auth ----------
+  var gateEl = document.getElementById("gate");
+  var contentEl = document.getElementById("content");
+  var tabbarEl = document.getElementById("tabbar");
+  var detailWrapEl = document.getElementById("detail");
+
+  function showApp() {
+    gateEl.hidden = true;
+    contentEl.hidden = false;
+    tabbarEl.hidden = false;
+  }
+  function showGate() {
+    gateEl.hidden = false;
+    contentEl.hidden = true;
+    tabbarEl.hidden = true;
+    detailWrapEl.hidden = true;
+  }
+
+  var realtimeChannels = [];
+  function subscribeRealtime() {
+    realtimeChannels.push(
+      sb.channel("tasks-changes").on("postgres_changes", { event: "*", schema: "public", table: "tasks" }, refreshAll).subscribe()
+    );
+    realtimeChannels.push(
+      sb.channel("notes-changes").on("postgres_changes", { event: "*", schema: "public", table: "notes" }, refreshAll).subscribe()
+    );
+  }
+
+  function boot() {
+    if (!CONFIG_OK) { showGate(); return; }
+    sb.auth.getSession().then(function (res) {
+      if (res.data.session) { showApp(); subscribeRealtime(); refreshAll(); }
+      else { showGate(); }
+    });
+    sb.auth.onAuthStateChange(function (event, session) {
+      if (session) { showApp(); subscribeRealtime(); refreshAll(); }
+      else { showGate(); realtimeChannels.forEach(function (c) { sb.removeChannel(c); }); realtimeChannels = []; }
+    });
+  }
+
+  var authMode = "signin";
+  var gateTitleEl = document.getElementById("gate-title");
+  var loginBtnEl = document.getElementById("login-btn");
+  var modeToggleEl = document.getElementById("mode-toggle");
+  var infoEl = document.getElementById("gate-info");
+
+  function setAuthMode(mode) {
+    authMode = mode;
+    document.getElementById("login-error").textContent = "";
+    infoEl.hidden = true;
+    if (mode === "signup") {
+      gateTitleEl.textContent = "Create your account";
+      loginBtnEl.textContent = "Sign up";
+      modeToggleEl.innerHTML = 'Already have an account? <span>Sign in</span>';
+      document.getElementById("login-password").setAttribute("autocomplete", "new-password");
+    } else {
+      gateTitleEl.textContent = "Sign in";
+      loginBtnEl.textContent = "Sign in";
+      modeToggleEl.innerHTML = 'Need an account? <span>Sign up</span>';
+      document.getElementById("login-password").setAttribute("autocomplete", "current-password");
+    }
+  }
+  modeToggleEl.addEventListener("click", function () { setAuthMode(authMode === "signin" ? "signup" : "signin"); });
+
+  loginBtnEl.addEventListener("click", function () {
+    if (!CONFIG_OK) return;
+    var email = document.getElementById("login-email").value.trim();
+    var password = document.getElementById("login-password").value;
+    var errEl = document.getElementById("login-error");
+    errEl.textContent = "";
+    infoEl.hidden = true;
+    if (!email || !password) { errEl.textContent = "Enter your email and password."; return; }
+    if (password.length < 6) { errEl.textContent = "Password must be at least 6 characters."; return; }
+
+    if (authMode === "signup") {
+      sb.auth.signUp({ email: email, password: password }).then(function (res) {
+        if (res.error) { errEl.textContent = res.error.message; return; }
+        if (res.data.session) {
+          // email confirmation is off for this project — signed in immediately
+          return;
+        }
+        infoEl.hidden = false;
+        infoEl.textContent = "Almost there — check " + email + " for a confirmation link, then come back and sign in.";
+        setAuthMode("signin");
+        document.getElementById("login-email").value = email;
+      });
+    } else {
+      sb.auth.signInWithPassword({ email: email, password: password }).then(function (res) {
+        if (res.error) errEl.textContent = res.error.message;
+      });
+    }
+  });
+
+  // ---------- rendering (same UI as before) ----------
+  var detailEl = document.getElementById("detail");
+  var detailContentEl = document.getElementById("detail-content");
+  var detailCatBtn = document.getElementById("detail-cat");
+
+  function render() {
+    document.querySelectorAll(".tab").forEach(function (b) {
+      b.classList.toggle("active", b.getAttribute("data-view") === state.view);
+    });
+    tabbarEl.style.visibility = state.detailOpen ? "hidden" : "visible";
+
+    if (state.view === "today") renderToday();
+    else if (state.view === "week") renderWeek();
+    else if (state.view === "month") renderMonth();
+
+    if (state.detailOpen) { detailEl.hidden = false; renderDetail(); }
+    else { detailEl.classList.remove("open"); detailEl.hidden = true; }
+  }
+
+  function taskRowHtml(task) {
+    var accent = task.category === "work" ? "var(--work)" : "var(--personal)";
+    var done = task.status === "done";
+    var kids = childrenOf(task.id);
+    var subHtml = "";
+    if (kids.length) {
+      var doneCount = kids.filter(function (k) { return k.status === "done"; }).length;
+      var pct = Math.round((doneCount / kids.length) * 100);
+      subHtml = '<div class="sub-progress"><div class="bar-track"><div class="bar-fill" style="width:' + pct + '%;background:' + accent + ';"></div></div>' +
+        '<span class="mono" style="font-size:11px;color:var(--ink-faint);">' + doneCount + "/" + kids.length + " subtasks</span></div>";
+    }
+    var timeHtml;
+    if (hasTime(task.dueAt)) timeHtml = '<span class="task-time mono">' + fmtTime(task.dueAt) + "</span>";
+    else if (task.dueAt === null) timeHtml = '<span class="task-time mono" style="color:var(--ink-faint);">anytime</span>';
+    else timeHtml = '<span class="task-time mono" style="color:var(--ink-faint);">today</span>';
+    var flagHtml = (!done && task.priority === "high") ? '<span style="color:var(--priority);display:inline-flex;">' + ICONS.flag + "</span>" : "";
+    return '<div class="card task-row' + (done ? " done" : "") + '" data-task="' + task.id + '">' +
+      '<button class="checkbox' + (done ? " checked" : "") + '" style="--dot:' + accent + ';" data-toggle="' + task.id + '" aria-label="Toggle complete">' +
+      (done ? '<span style="color:var(--card);display:flex;">' + ICONS.check + "</span>" : "") + "</button>" +
+      '<div class="task-body"><div style="display:flex;align-items:center;gap:6px;"><span class="task-title' + (done ? " strike" : "") + '">' + escapeHtml(task.title) + "</span>" + flagHtml + "</div>" + subHtml + "</div>" +
+      timeHtml + "</div>";
+  }
+
+  function greetingWord() { var h = new Date().getHours(); if (h < 12) return "morning"; if (h < 18) return "afternoon"; return "evening"; }
+
+  function renderToday() {
+    var visibleTasks = state.tasks.filter(function (t) {
+      if (t.parentTaskId) return false;
+      if (state.filter !== "all" && t.category !== state.filter) return false;
+      var d = dateOnly(t.dueAt);
+      return d === null || d === TODAY_ISO;
+    }).sort(function (a, b) {
+      var ta = hasTime(a.dueAt) ? a.dueAt.slice(11, 16) : "99:99";
+      var tb = hasTime(b.dueAt) ? b.dueAt.slice(11, 16) : "99:99";
+      if (a.status !== b.status) return a.status === "done" ? 1 : -1;
+      return ta < tb ? -1 : ta > tb ? 1 : 0;
+    });
+    var unconvertedNotes = state.notes.filter(function (n) { return !(n.linkedTaskIds && n.linkedTaskIds.length); })
+      .sort(function (a, b) { return b.createdAt < a.createdAt ? -1 : 1; }).slice(0, 3);
+    var dateLabel = today.toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric" }).toUpperCase();
+
+    var html = '<div class="top-row"><div class="eyebrow">' + dateLabel + '</div><button class="signout-link" id="signout-btn">Sign out</button></div>';
+    html += '<div class="greeting">Good ' + greetingWord() + "</div>";
+    html += '<div class="chip-row">' +
+      '<button class="chip' + (state.filter === "all" ? " active" : "") + '" data-filter="all">All</button>' +
+      '<button class="chip work' + (state.filter === "work" ? " active" : "") + '" data-filter="work">Work</button>' +
+      '<button class="chip personal' + (state.filter === "personal" ? " active" : "") + '" data-filter="personal">Personal</button>' +
+      "</div>";
+    if (unconvertedNotes.length) {
+      html += '<div class="section-label">From your notes</div>';
+      unconvertedNotes.forEach(function (n) {
+        html += '<div class="card note-row" data-note-row="' + n.id + '"><span style="color:var(--ink-faint);display:flex;">' + ICONS.note + '</span>' +
+          '<div class="note-text" data-expand="' + n.id + '">“' + escapeHtml(n.body) + '”</div>' +
+          '<button class="make-task-btn" style="color:var(--personal);" data-convert="' + n.id + '">Make task →</button></div>';
+      });
+    }
+    html += '<div class="section-label">Today’s tasks</div>';
+    if (visibleTasks.length) visibleTasks.forEach(function (t) { html += taskRowHtml(t); });
+    else html += '<div class="empty-note">Nothing here yet — capture something below.</div>';
+    html += '<div class="capture-bar"><input class="capture-input" id="capture-input" type="text" placeholder="Capture a thought…" />' +
+      '<button class="capture-btn" id="capture-btn" aria-label="Add"><span style="color:var(--card);display:flex;">' + ICONS.plus + "</span></button></div>";
+
+    contentEl.innerHTML = html;
+    wireCommon();
+    document.getElementById("capture-btn").addEventListener("click", submitCapture);
+    document.getElementById("capture-input").addEventListener("keydown", function (e) { if (e.key === "Enter") submitCapture(); });
+    document.getElementById("signout-btn").addEventListener("click", function () { sb.auth.signOut(); });
+    document.querySelectorAll(".chip[data-filter]").forEach(function (b) {
+      b.addEventListener("click", function () { state.filter = b.getAttribute("data-filter"); render(); });
+    });
+    document.querySelectorAll("[data-convert]").forEach(function (b) {
+      b.addEventListener("click", function (e) {
+        e.stopPropagation();
+        var note = state.notes.find(function (n) { return n.id === b.getAttribute("data-convert"); });
+        if (note) convertNoteToTask(note);
+      });
+    });
+    document.querySelectorAll("[data-expand]").forEach(function (el) {
+      el.addEventListener("click", function () {
+        el.classList.toggle("expanded");
+        var row = document.querySelector('[data-note-row="' + el.getAttribute("data-expand") + '"]');
+        if (row) row.classList.toggle("expanded");
+      });
+    });
+  }
+
+  function submitCapture() {
+    var input = document.getElementById("capture-input");
+    var val = input.value.trim();
+    if (!val) return;
+    addNote(val);
+    input.value = "";
+  }
+
+  function dayDotsHtml(dateISO) {
+    var dayTasks = state.tasks.filter(function (t) { return dateOnly(t.dueAt) === dateISO; });
+    var out = "";
+    if (dayTasks.some(function (t) { return t.category === "work"; })) out += '<span class="dot" style="background:var(--work);"></span>';
+    if (dayTasks.some(function (t) { return t.category === "personal"; })) out += '<span class="dot" style="background:var(--personal);"></span>';
+    return out;
+  }
+
+  function agendaHtml(dateISO) {
+    var dayTasks = state.tasks.filter(function (t) { return !t.parentTaskId && dateOnly(t.dueAt) === dateISO; })
+      .sort(function (a, b) {
+        var ta = hasTime(a.dueAt) ? a.dueAt.slice(11, 16) : "99:99";
+        var tb = hasTime(b.dueAt) ? b.dueAt.slice(11, 16) : "99:99";
+        return ta < tb ? -1 : ta > tb ? 1 : 0;
+      });
+    var label = parseISODate(dateISO).toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric" });
+    var html = '<div class="section-label">' + label + "</div>";
+    if (dayTasks.length) dayTasks.forEach(function (t) { html += taskRowHtml(t); });
+    else html += '<div class="empty-note">Nothing scheduled this day.</div>';
+    return html;
+  }
+
+  function renderWeek() {
+    var anchor = parseISODate(state.weekAnchor);
+    var start = mondayOf(anchor);
+    var workCount = 0, personalCount = 0;
+    var days = [];
+    for (var i = 0; i < 7; i++) {
+      var d = addDays(start, i); var iso = isoDate(d); days.push(d);
+      state.tasks.forEach(function (t) { if (dateOnly(t.dueAt) === iso) { if (t.category === "work") workCount++; else personalCount++; } });
+    }
+    var rangeLabel = start.toLocaleDateString(undefined, { month: "short", day: "numeric" }) + "–" + addDays(start, 6).toLocaleDateString(undefined, { day: "numeric" });
+    var html = '<div class="top-row"><div class="eyebrow">' + monthLabel(start).toUpperCase() + " " + start.getFullYear() + '</div><button class="signout-link" id="signout-btn">Sign out</button></div>';
+    html += '<div class="week-nav"><button class="nav-btn" id="week-prev">' + ICONS.chevronL + '</button><div class="page-title">This week</div><button class="nav-btn" id="week-next">' + ICONS.chevronRb + "</button></div>";
+    html += '<div class="mono" style="font-size:12px;color:var(--ink-soft);margin-bottom:14px;">' + rangeLabel + "</div>";
+    html += '<div class="stat-row"><span class="mono" style="color:var(--work);">● ' + workCount + " work</span><span class=\"mono\" style=\"color:var(--personal);\">● " + personalCount + " personal</span></div>";
+    html += '<div class="week-grid">';
+    days.forEach(function (d) {
+      var iso = isoDate(d); var isToday = sameDate(d, today); var isSel = iso === state.selectedDate;
+      html += '<button class="day-col' + (isSel ? " selected" : "") + '" data-date="' + iso + '">' +
+        '<span class="day-letter">' + WEEKDAY_LETTERS[d.getDay() === 0 ? 6 : d.getDay() - 1] + "</span>" +
+        '<span class="day-num' + (isToday ? " today" : "") + '">' + d.getDate() + "</span>" +
+        '<div class="day-dots">' + dayDotsHtml(iso) + "</div></button>";
+    });
+    html += "</div>" + agendaHtml(state.selectedDate);
+    contentEl.innerHTML = html;
+    wireCommon();
+    document.getElementById("signout-btn").addEventListener("click", function () { sb.auth.signOut(); });
+    document.querySelectorAll("[data-date]").forEach(function (b) { b.addEventListener("click", function () { state.selectedDate = b.getAttribute("data-date"); render(); }); });
+    document.getElementById("week-prev").addEventListener("click", function () { state.weekAnchor = isoDate(addDays(start, -7)); render(); });
+    document.getElementById("week-next").addEventListener("click", function () { state.weekAnchor = isoDate(addDays(start, 7)); render(); });
+  }
+
+  function renderMonth() {
+    var anchor = parseISODate(state.monthAnchor);
+    var year = anchor.getFullYear(), month = anchor.getMonth();
+    var firstOfMonth = new Date(year, month, 1);
+    var gridStart = mondayOf(firstOfMonth);
+    var openCount = state.tasks.filter(function (t) {
+      if (t.status === "done" || !t.dueAt) return false;
+      var d = parseISODate(dateOnly(t.dueAt));
+      return d.getFullYear() === year && d.getMonth() === month;
+    }).length;
+    var html = '<div class="top-row"><div class="eyebrow">' + year + '</div><button class="signout-link" id="signout-btn">Sign out</button></div>';
+    html += '<div class="month-nav"><button class="nav-btn" id="month-prev">' + ICONS.chevronL + '</button><div class="page-title">' + monthLabel(firstOfMonth) + "</div><button class=\"nav-btn\" id=\"month-next\">" + ICONS.chevronRb + "</button></div>";
+    html += '<div class="mono" style="font-size:11.5px;color:var(--ink-soft);margin-bottom:14px;">' + openCount + " open</div>";
+    html += '<div class="month-weekdays">' + WEEKDAY_LETTERS.map(function (l) { return "<span>" + l + "</span>"; }).join("") + "</div>";
+    html += '<div class="month-grid">';
+    for (var i = 0; i < 42; i++) {
+      var d = addDays(gridStart, i); var iso = isoDate(d); var outside = d.getMonth() !== month;
+      var isToday = sameDate(d, today); var isSel = iso === state.selectedDate;
+      if (i >= 35 && outside) continue;
+      html += '<button class="month-cell' + (isSel ? " selected" : "") + '" data-date="' + iso + '">' +
+        '<span class="month-num' + (isToday ? " today" : "") + (outside ? " outside" : "") + '">' + d.getDate() + "</span>" +
+        '<div class="day-dots">' + dayDotsHtml(iso) + "</div></button>";
+    }
+    html += "</div>" + agendaHtml(state.selectedDate);
+    contentEl.innerHTML = html;
+    wireCommon();
+    document.getElementById("signout-btn").addEventListener("click", function () { sb.auth.signOut(); });
+    document.querySelectorAll("[data-date]").forEach(function (b) { b.addEventListener("click", function () { state.selectedDate = b.getAttribute("data-date"); render(); }); });
+    document.getElementById("month-prev").addEventListener("click", function () { state.monthAnchor = isoDate(new Date(year, month - 1, 1)); render(); });
+    document.getElementById("month-next").addEventListener("click", function () { state.monthAnchor = isoDate(new Date(year, month + 1, 1)); render(); });
+  }
+
+  function wireCommon() {
+    document.querySelectorAll("[data-toggle]").forEach(function (b) {
+      b.addEventListener("click", function (e) {
+        e.stopPropagation();
+        var id = b.getAttribute("data-toggle"); var t = taskById(id);
+        if (t) updateTask(id, { status: t.status === "done" ? "open" : "done" });
+      });
+    });
+    document.querySelectorAll("[data-task]").forEach(function (row) {
+      row.addEventListener("click", function () { openDetail(row.getAttribute("data-task")); });
+    });
+  }
+
+  function openDetail(taskId) { state.detailTaskId = taskId; state.detailOpen = true; render(); }
+  function closeDetail() { state.detailOpen = false; render(); }
+  document.getElementById("detail-back").addEventListener("click", closeDetail);
+
+  function toDatetimeLocal(dueAt) { if (!dueAt) return ""; return hasTime(dueAt) ? dueAt.slice(0, 16) : dueAt + "T09:00"; }
+
+  function renderDetail() {
+    var task = taskById(state.detailTaskId);
+    if (!task) { closeDetail(); return; }
+    detailEl.classList.add("open");
+    detailCatBtn.className = "cat-pill " + task.category;
+    detailCatBtn.textContent = task.category === "work" ? "Work" : "Personal";
+    detailCatBtn.onclick = function () { updateTask(task.id, { category: task.category === "work" ? "personal" : "work" }); };
+
+    var kids = childrenOf(task.id);
+    var doneCount = kids.filter(function (k) { return k.status === "done"; }).length;
+    var accent = task.category === "work" ? "var(--work)" : "var(--personal)";
+    var note = task.sourceNoteId ? state.notes.find(function (n) { return n.id === task.sourceNoteId; }) : null;
+
+    var html = "";
+    html += '<textarea class="field-title" id="f-title" rows="1">' + escapeHtml(task.title) + "</textarea>";
+    html += '<textarea class="field-detail" id="f-detail" placeholder="Add a detail…" rows="2">' + escapeHtml(task.detail || "") + "</textarea>";
+    html += '<div class="meta-row"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--ink-faint)" stroke-width="1.8"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4"/></svg>' +
+      '<input type="datetime-local" id="f-due" value="' + toDatetimeLocal(task.dueAt) + '" />' +
+      (task.dueAt ? '<button class="icon-btn" id="f-clear-due" aria-label="Clear date" style="padding:2px;">' + ICONS.trash + "</button>" : "") + "</div>";
+    html += '<div class="meta-row"><span style="color:var(--priority);display:inline-flex;">' + ICONS.flag + '</span>' +
+      '<select id="f-priority"><option value="low"' + (task.priority === "low" ? " selected" : "") + '>Low priority</option>' +
+      '<option value="medium"' + (task.priority === "medium" ? " selected" : "") + '>Medium priority</option>' +
+      '<option value="high"' + (task.priority === "high" ? " selected" : "") + ">High priority</option></select></div>";
+    if (note) {
+      html += '<div class="link-note" id="linked-note"><span style="display:flex;color:var(--ink-faint);">' + ICONS.note + '</span>' +
+        '<span class="note-text" id="linked-note-text" style="flex:1;">From note · “' + escapeHtml(note.body) + '”</span></div>';
+    }
+    html += '<div class="divider"></div>';
+    html += '<div class="section-label">Subtasks' + (kids.length ? " · " + doneCount + " of " + kids.length : "") + "</div>";
+    if (kids.length) html += '<div class="progress-track"><div class="progress-fill" style="width:' + Math.round((doneCount / kids.length) * 100) + '%;background:' + accent + ';"></div></div>';
+    kids.forEach(function (k) {
+      var done = k.status === "done";
+      html += '<div class="card subtask-row"><button class="checkbox' + (done ? " checked" : "") + '" style="--dot:' + accent + ';" data-toggle="' + k.id + '">' +
+        (done ? '<span style="color:var(--card);display:flex;">' + ICONS.check + "</span>" : "") + "</button>" +
+        '<span class="subtask-title' + (done ? " strike" : "") + '">' + escapeHtml(k.title) + '</span>' +
+        '<button class="subtask-del" data-del-sub="' + k.id + '">' + ICONS.trash + "</button></div>";
+    });
+    html += '<div class="add-subtask"><span style="display:flex;color:var(--ink-faint);">' + ICONS.plusSmall + '</span><input type="text" id="f-new-subtask" placeholder="Add subtask" /></div>';
+    detailContentEl.innerHTML = html;
+
+    var titleField = document.getElementById("f-title");
+    var detailField = document.getElementById("f-detail");
+    autoGrow(titleField);
+    autoGrow(detailField);
+    titleField.addEventListener("input", function () { autoGrow(titleField); });
+    detailField.addEventListener("input", function () { autoGrow(detailField); });
+
+    var linkedNoteText = document.getElementById("linked-note-text");
+    if (linkedNoteText) {
+      linkedNoteText.addEventListener("click", function () {
+        linkedNoteText.classList.toggle("expanded");
+        document.getElementById("linked-note").classList.toggle("expanded");
+      });
+    }
+
+    titleField.addEventListener("change", function (e) { updateTask(task.id, { title: e.target.value.trim() || task.title }); });
+    detailField.addEventListener("change", function (e) { updateTask(task.id, { detail: e.target.value }); });
+    document.getElementById("f-due").addEventListener("change", function (e) { updateTask(task.id, { dueAt: e.target.value || null }); });
+    document.getElementById("f-priority").addEventListener("change", function (e) { updateTask(task.id, { priority: e.target.value }); });
+    var clearBtn = document.getElementById("f-clear-due");
+    if (clearBtn) clearBtn.addEventListener("click", function () { updateTask(task.id, { dueAt: null }); });
+    detailContentEl.querySelectorAll("[data-toggle]").forEach(function (b) {
+      b.addEventListener("click", function () { var id = b.getAttribute("data-toggle"); var t = taskById(id); if (t) updateTask(id, { status: t.status === "done" ? "open" : "done" }); });
+    });
+    detailContentEl.querySelectorAll("[data-del-sub]").forEach(function (b) {
+      b.addEventListener("click", function () { deleteTaskCascade(b.getAttribute("data-del-sub")); });
+    });
+    var newSub = document.getElementById("f-new-subtask");
+    newSub.addEventListener("keydown", function (e) {
+      if (e.key === "Enter") {
+        var val = newSub.value.trim(); if (!val) return;
+        addTask({ title: val, detail: "", category: task.category, status: "open", dueAt: null, priority: "medium", parentTaskId: task.id, sourceNoteId: null });
+        newSub.value = "";
+      }
+    });
+
+    var footer = document.querySelector(".detail-footer");
+    if (!footer) { footer = document.createElement("div"); footer.className = "detail-footer"; detailEl.appendChild(footer); }
+    footer.innerHTML = '<button class="primary-btn' + (task.status === "done" ? " undo" : "") + '" id="f-complete">' + (task.status === "done" ? "Mark incomplete" : "Mark complete") + '</button>' +
+      '<button class="text-btn" id="f-delete">Delete task</button>';
+    document.getElementById("f-complete").addEventListener("click", function () { updateTask(task.id, { status: task.status === "done" ? "open" : "done" }); });
+    document.getElementById("f-delete").addEventListener("click", function () {
+      if (window.confirm("Delete this task" + (kids.length ? " and its subtasks" : "") + "?")) { deleteTaskCascade(task.id); closeDetail(); }
+    });
+  }
+
+  document.querySelectorAll(".tab").forEach(function (b) { b.addEventListener("click", function () { state.view = b.getAttribute("data-view"); render(); }); });
+
+  boot();
+})();
+</script>
+</body>
+</html>
