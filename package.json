@@ -1,0 +1,9 @@
+{
+  "name": "my-day-app",
+  "version": "1.0.0",
+  "private": true,
+  "description": "My Day — serverless functions dependency list. The app itself is a static site with no build step; this file exists only so Vercel installs the library the reminders function needs.",
+  "dependencies": {
+    "web-push": "3.6.7"
+  }
+}
