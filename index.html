@@ -133,8 +133,8 @@
   .cat-pill.work { background: var(--work-soft); color: var(--work); }
   .cat-pill.personal { background: var(--personal-soft); color: var(--personal); }
   #detail-content { flex: 1; overflow-y: auto; padding: 16px 20px 0; }
-  .field-title { width: 100%; border: none; background: none; font-size: 21px; font-weight: 600; font-family: inherit; color: var(--ink); margin-bottom: 10px; padding: 0; outline: none; resize: none; }
-  .field-detail { width: 100%; border: none; background: none; font-size: 14px; color: var(--ink-soft); font-family: inherit; line-height: 1.55; margin-bottom: 20px; padding: 0; outline: none; resize: none; min-height: 44px; }
+  .field-title { width: 100%; border: none; background: none; font-size: 21px; font-weight: 600; font-family: inherit; color: var(--ink); margin-bottom: 10px; padding: 0; outline: none; resize: none; overflow: hidden; }
+  .field-detail { width: 100%; border: none; background: none; font-size: 14px; color: var(--ink-soft); font-family: inherit; line-height: 1.55; margin-bottom: 20px; padding: 0; outline: none; resize: none; min-height: 44px; overflow: hidden; }
   .meta-row { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
   .meta-row input[type=datetime-local], .meta-row select { font-family: "IBM Plex Mono", monospace; font-size: 13px; color: var(--ink-soft); background: var(--card); border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px; }
   .link-note { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--ink-soft); background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; margin-bottom: 4px; }
@@ -260,6 +260,11 @@
     return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
       return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
     });
+  }
+  function autoGrow(el) {
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = el.scrollHeight + "px";
   }
 
   var today = new Date();
@@ -704,8 +709,15 @@
     html += '<div class="add-subtask"><span style="display:flex;color:var(--ink-faint);">' + ICONS.plusSmall + '</span><input type="text" id="f-new-subtask" placeholder="Add subtask" /></div>';
     detailContentEl.innerHTML = html;
 
-    document.getElementById("f-title").addEventListener("change", function (e) { updateTask(task.id, { title: e.target.value.trim() || task.title }); });
-    document.getElementById("f-detail").addEventListener("change", function (e) { updateTask(task.id, { detail: e.target.value }); });
+    var titleField = document.getElementById("f-title");
+    var detailField = document.getElementById("f-detail");
+    autoGrow(titleField);
+    autoGrow(detailField);
+    titleField.addEventListener("input", function () { autoGrow(titleField); });
+    detailField.addEventListener("input", function () { autoGrow(detailField); });
+
+    titleField.addEventListener("change", function (e) { updateTask(task.id, { title: e.target.value.trim() || task.title }); });
+    detailField.addEventListener("change", function (e) { updateTask(task.id, { detail: e.target.value }); });
     document.getElementById("f-due").addEventListener("change", function (e) { updateTask(task.id, { dueAt: e.target.value || null }); });
     document.getElementById("f-priority").addEventListener("change", function (e) { updateTask(task.id, { priority: e.target.value }); });
     var clearBtn = document.getElementById("f-clear-due");
