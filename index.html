@@ -63,6 +63,8 @@
   .greeting { font-family: "Newsreader", Georgia, serif; font-style: italic; font-weight: 500; font-size: 24px; margin: 0 0 18px; text-wrap: balance; }
   .page-title { font-family: "Newsreader", Georgia, serif; font-weight: 600; font-size: 24px; }
   .signout-link { background: none; border: none; color: var(--ink-faint); font-size: 12px; cursor: pointer; padding: 4px 0; white-space: nowrap; }
+  .top-row-actions { display: flex; align-items: center; gap: 14px; }
+  .reminders-link.on { color: var(--personal); }
 
   .chip-row { display: flex; gap: 8px; margin-bottom: 22px; flex-wrap: wrap; }
   .chip { font-size: 12.5px; font-weight: 500; padding: 6px 14px; border-radius: 20px; cursor: pointer; color: var(--ink-soft); background: transparent; border: 1px solid var(--line); }
@@ -231,6 +233,13 @@
 
   var sb = CONFIG_OK ? window.supabase.createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY) : null;
 
+  // Reminders (Phase 3): true only when this browser/device can receive
+  // push notifications at all AND config.js has a VAPID key configured.
+  // False in older browsers, and notably in Safari on iOS/iPadOS unless
+  // the app has been added to the home screen first (Apple's own
+  // restriction, not something this app can work around).
+  var pushSupported = !!(window.VAPID_PUBLIC_KEY && "serviceWorker" in navigator && "PushManager" in window && "Notification" in window);
+
   var ICONS = {
     note: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 2h9l5 5v15H6z"/><path d="M15 2v5h5"/><path d="M9 13h6M9 17h6"/></svg>',
     flag: '<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M4 2v20l8-6 8 6V2z"/></svg>',
@@ -274,8 +283,84 @@
   var state = {
     view: "today", filter: "all", tasks: [], notes: [],
     weekAnchor: TODAY_ISO, monthAnchor: TODAY_ISO, selectedDate: TODAY_ISO,
-    detailOpen: false, detailTaskId: null
+    detailOpen: false, detailTaskId: null, pushSubscribed: false
   };
+
+  function topRowActionsHtml() {
+    var remindersBtn = pushSupported
+      ? '<button class="signout-link reminders-link' + (state.pushSubscribed ? " on" : "") + '" id="reminders-btn">' +
+        (state.pushSubscribed ? "🔔 Reminders on" : "🔔 Enable reminders") + "</button>"
+      : "";
+    return '<div class="top-row-actions">' + remindersBtn + '<button class="signout-link" id="signout-btn">Sign out</button></div>';
+  }
+
+  // ---------- push notifications ----------
+  function urlBase64ToUint8Array(base64String) {
+    var padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+    var base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+    var rawData = window.atob(base64);
+    var outputArray = new Uint8Array(rawData.length);
+    for (var i = 0; i < rawData.length; i++) outputArray[i] = rawData.charCodeAt(i);
+    return outputArray;
+  }
+
+  function refreshPushStatus() {
+    if (!pushSupported) return;
+    navigator.serviceWorker.register("./sw.js")
+      .then(function (reg) { return reg.pushManager.getSubscription(); })
+      .then(function (sub) { state.pushSubscribed = !!sub; render(); })
+      .catch(function (err) { console.warn("push status check failed", err); });
+  }
+
+  function togglePush() {
+    if (!pushSupported) return;
+
+    if (state.pushSubscribed) {
+      navigator.serviceWorker.ready
+        .then(function (reg) { return reg.pushManager.getSubscription(); })
+        .then(function (sub) {
+          if (!sub) { state.pushSubscribed = false; render(); return; }
+          var endpoint = sub.endpoint;
+          return sub.unsubscribe().then(function () {
+            return sb.from("push_subscriptions").delete().eq("endpoint", endpoint);
+          });
+        })
+        .then(function () { state.pushSubscribed = false; render(); })
+        .catch(function (err) { console.warn("unsubscribe failed", err); });
+      return;
+    }
+
+    Notification.requestPermission().then(function (perm) {
+      if (perm !== "granted") {
+        alert("Notifications are blocked for this site — you can allow them again in your browser's site settings.");
+        return;
+      }
+      navigator.serviceWorker.ready
+        .then(function (reg) {
+          return reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(window.VAPID_PUBLIC_KEY) });
+        })
+        .then(function (sub) {
+          var json = sub.toJSON();
+          return sb.from("push_subscriptions").upsert(
+            { endpoint: json.endpoint, p256dh: json.keys.p256dh, auth_key: json.keys.auth },
+            { onConflict: "endpoint" }
+          );
+        })
+        .then(function (res) {
+          if (res && res.error) {
+            console.warn("save subscription failed", res.error);
+            alert("Couldn't save your reminder settings — try again.");
+            return;
+          }
+          state.pushSubscribed = true;
+          render();
+        })
+        .catch(function (err) {
+          console.warn("subscribe failed", err);
+          alert("Couldn't enable reminders on this device or browser.");
+        });
+    });
+  }
 
   function childrenOf(taskId) { return state.tasks.filter(function (t) { return t.parentTaskId === taskId; }); }
   function taskById(id) { return state.tasks.find(function (t) { return t.id === id; }); }
@@ -391,11 +476,11 @@
   function boot() {
     if (!CONFIG_OK) { showGate(); return; }
     sb.auth.getSession().then(function (res) {
-      if (res.data.session) { showApp(); subscribeRealtime(); refreshAll(); }
+      if (res.data.session) { showApp(); subscribeRealtime(); refreshAll(); refreshPushStatus(); }
       else { showGate(); }
     });
     sb.auth.onAuthStateChange(function (event, session) {
-      if (session) { showApp(); subscribeRealtime(); refreshAll(); }
+      if (session) { showApp(); subscribeRealtime(); refreshAll(); refreshPushStatus(); }
       else { showGate(); realtimeChannels.forEach(function (c) { sb.removeChannel(c); }); realtimeChannels = []; }
     });
   }
@@ -513,7 +598,7 @@
       .sort(function (a, b) { return b.createdAt < a.createdAt ? -1 : 1; }).slice(0, 3);
     var dateLabel = today.toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric" }).toUpperCase();
 
-    var html = '<div class="top-row"><div class="eyebrow">' + dateLabel + '</div><button class="signout-link" id="signout-btn">Sign out</button></div>';
+    var html = '<div class="top-row"><div class="eyebrow">' + dateLabel + '</div>' + topRowActionsHtml() + '</div>';
     html += '<div class="greeting">Good ' + greetingWord() + "</div>";
     html += '<div class="chip-row">' +
       '<button class="chip' + (state.filter === "all" ? " active" : "") + '" data-filter="all">All</button>' +
@@ -598,7 +683,7 @@
       state.tasks.forEach(function (t) { if (dateOnly(t.dueAt) === iso) { if (t.category === "work") workCount++; else personalCount++; } });
     }
     var rangeLabel = start.toLocaleDateString(undefined, { month: "short", day: "numeric" }) + "–" + addDays(start, 6).toLocaleDateString(undefined, { day: "numeric" });
-    var html = '<div class="top-row"><div class="eyebrow">' + monthLabel(start).toUpperCase() + " " + start.getFullYear() + '</div><button class="signout-link" id="signout-btn">Sign out</button></div>';
+    var html = '<div class="top-row"><div class="eyebrow">' + monthLabel(start).toUpperCase() + " " + start.getFullYear() + '</div>' + topRowActionsHtml() + '</div>';
     html += '<div class="week-nav"><button class="nav-btn" id="week-prev">' + ICONS.chevronL + '</button><div class="page-title">This week</div><button class="nav-btn" id="week-next">' + ICONS.chevronRb + "</button></div>";
     html += '<div class="mono" style="font-size:12px;color:var(--ink-soft);margin-bottom:14px;">' + rangeLabel + "</div>";
     html += '<div class="stat-row"><span class="mono" style="color:var(--work);">● ' + workCount + " work</span><span class=\"mono\" style=\"color:var(--personal);\">● " + personalCount + " personal</span></div>";
@@ -629,7 +714,7 @@
       var d = parseISODate(dateOnly(t.dueAt));
       return d.getFullYear() === year && d.getMonth() === month;
     }).length;
-    var html = '<div class="top-row"><div class="eyebrow">' + year + '</div><button class="signout-link" id="signout-btn">Sign out</button></div>';
+    var html = '<div class="top-row"><div class="eyebrow">' + year + '</div>' + topRowActionsHtml() + '</div>';
     html += '<div class="month-nav"><button class="nav-btn" id="month-prev">' + ICONS.chevronL + '</button><div class="page-title">' + monthLabel(firstOfMonth) + "</div><button class=\"nav-btn\" id=\"month-next\">" + ICONS.chevronRb + "</button></div>";
     html += '<div class="mono" style="font-size:11.5px;color:var(--ink-soft);margin-bottom:14px;">' + openCount + " open</div>";
     html += '<div class="month-weekdays">' + WEEKDAY_LETTERS.map(function (l) { return "<span>" + l + "</span>"; }).join("") + "</div>";
@@ -652,6 +737,8 @@
   }
 
   function wireCommon() {
+    var remindersBtn = document.getElementById("reminders-btn");
+    if (remindersBtn) remindersBtn.addEventListener("click", togglePush);
     document.querySelectorAll("[data-toggle]").forEach(function (b) {
       b.addEventListener("click", function (e) {
         e.stopPropagation();
