@@ -87,6 +87,11 @@
   .bar-fill { height: 100%; }
   .empty-note { color: var(--ink-faint); font-size: 13px; padding: 10px 2px 4px; }
 
+  .folder-row { display: flex; align-items: center; gap: 10px; padding: 12px 14px; margin-bottom: 8px; cursor: pointer; }
+  .folder-name { flex: 1; font-size: 14px; font-weight: 500; }
+  .folder-count { font-size: 11.5px; color: var(--ink-faint); }
+  .folder-input { font-size: 13px; color: var(--ink-soft); background: var(--card); border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px; flex: 1; min-width: 0; font-family: inherit; }
+
   .note-row { display: flex; align-items: center; gap: 10px; padding: 10px 12px; margin-bottom: 8px; }
   .note-row.expanded { align-items: flex-start; }
   .note-text { flex: 1; font-size: 13px; color: var(--ink-soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
@@ -191,6 +196,10 @@
       <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4M8 13h.01M12 13h.01M16 13h.01M8 17h.01M12 17h.01"/></svg>
       <span>Month</span>
     </button>
+    <button class="tab" data-view="folders" aria-label="Folders">
+      <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 6.5a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-11Z"/></svg>
+      <span>Folders</span>
+    </button>
   </div>
 
   <div id="detail" hidden>
@@ -248,7 +257,8 @@
     chevronRb: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 5l7 7-7 7"/></svg>',
     plus: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14M5 12h14"/></svg>',
     plusSmall: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>',
-    trash: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 6h16M9 6V4h6v2M6 6l1 14h10l1-14"/></svg>'
+    trash: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 6h16M9 6V4h6v2M6 6l1 14h10l1-14"/></svg>',
+    folder: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 6.5a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-11Z"/></svg>'
   };
   var WEEKDAY_LETTERS = ["M","T","W","T","F","S","S"];
 
@@ -283,7 +293,8 @@
   var state = {
     view: "today", filter: "all", tasks: [], notes: [],
     weekAnchor: TODAY_ISO, monthAnchor: TODAY_ISO, selectedDate: TODAY_ISO,
-    detailOpen: false, detailTaskId: null, pushSubscribed: false
+    detailOpen: false, detailTaskId: null, pushSubscribed: false,
+    folderFilter: null, folderDrill: null
   };
 
   function topRowActionsHtml() {
@@ -368,7 +379,8 @@
   // ---------- row <-> app-model mapping ----------
   function mapTaskRow(r) {
     return { id: r.id, title: r.title, detail: r.detail || "", category: r.category, status: r.status,
-      dueAt: r.due_at, priority: r.priority, parentTaskId: r.parent_task_id, sourceNoteId: r.source_note_id };
+      dueAt: r.due_at, priority: r.priority, parentTaskId: r.parent_task_id, sourceNoteId: r.source_note_id,
+      folder: r.folder || null };
   }
   function mapNoteRow(r) {
     return { id: r.id, body: r.body, createdAt: r.created_at, linkedTaskIds: r.linked_task_ids || [] };
@@ -383,7 +395,27 @@
     if ("priority" in patch) out.priority = patch.priority;
     if ("parentTaskId" in patch) out.parent_task_id = patch.parentTaskId;
     if ("sourceNoteId" in patch) out.source_note_id = patch.sourceNoteId;
+    if ("folder" in patch) out.folder = patch.folder;
     return out;
+  }
+
+  // ---------- folders (sub-categories within Work/Personal) ----------
+  function folderNamesFor(category) {
+    var set = {};
+    state.tasks.forEach(function (t) {
+      if (!t.parentTaskId && t.category === category && t.folder) set[t.folder] = true;
+    });
+    return Object.keys(set).sort();
+  }
+  function foldersByCategory() {
+    var map = { work: {}, personal: {} };
+    state.tasks.forEach(function (t) {
+      if (t.parentTaskId || !t.folder) return;
+      if (!map[t.category][t.folder]) map[t.category][t.folder] = { total: 0, open: 0 };
+      map[t.category][t.folder].total++;
+      if (t.status !== "done") map[t.category][t.folder].open++;
+    });
+    return map;
   }
 
   // ---------- persistence (Supabase) ----------
@@ -552,6 +584,7 @@
     if (state.view === "today") renderToday();
     else if (state.view === "week") renderWeek();
     else if (state.view === "month") renderMonth();
+    else if (state.view === "folders") renderFolders();
 
     if (state.detailOpen) { detailEl.hidden = false; renderDetail(); }
     else { detailEl.classList.remove("open"); detailEl.hidden = true; }
@@ -586,6 +619,7 @@
     var visibleTasks = state.tasks.filter(function (t) {
       if (t.parentTaskId) return false;
       if (state.filter !== "all" && t.category !== state.filter) return false;
+      if (state.folderFilter && t.folder !== state.folderFilter) return false;
       var d = dateOnly(t.dueAt);
       return d === null || d === TODAY_ISO;
     }).sort(function (a, b) {
@@ -605,6 +639,17 @@
       '<button class="chip work' + (state.filter === "work" ? " active" : "") + '" data-filter="work">Work</button>' +
       '<button class="chip personal' + (state.filter === "personal" ? " active" : "") + '" data-filter="personal">Personal</button>' +
       "</div>";
+    if (state.filter === "work" || state.filter === "personal") {
+      var folderNames = folderNamesFor(state.filter);
+      if (folderNames.length) {
+        html += '<div class="chip-row">' +
+          '<button class="chip' + (!state.folderFilter ? " active" : "") + '" data-folder="">All folders</button>' +
+          folderNames.map(function (f) {
+            return '<button class="chip' + (state.folderFilter === f ? " active" : "") + '" data-folder="' + escapeHtml(f) + '">' + escapeHtml(f) + "</button>";
+          }).join("") +
+          "</div>";
+      }
+    }
     if (unconvertedNotes.length) {
       html += '<div class="section-label">From your notes</div>';
       unconvertedNotes.forEach(function (n) {
@@ -623,9 +668,11 @@
     wireCommon();
     document.getElementById("capture-btn").addEventListener("click", submitCapture);
     document.getElementById("capture-input").addEventListener("keydown", function (e) { if (e.key === "Enter") submitCapture(); });
-    document.getElementById("signout-btn").addEventListener("click", function () { sb.auth.signOut(); });
     document.querySelectorAll(".chip[data-filter]").forEach(function (b) {
-      b.addEventListener("click", function () { state.filter = b.getAttribute("data-filter"); render(); });
+      b.addEventListener("click", function () { state.filter = b.getAttribute("data-filter"); state.folderFilter = null; render(); });
+    });
+    document.querySelectorAll(".chip[data-folder]").forEach(function (b) {
+      b.addEventListener("click", function () { state.folderFilter = b.getAttribute("data-folder") || null; render(); });
     });
     document.querySelectorAll("[data-convert]").forEach(function (b) {
       b.addEventListener("click", function (e) {
@@ -698,7 +745,6 @@
     html += "</div>" + agendaHtml(state.selectedDate);
     contentEl.innerHTML = html;
     wireCommon();
-    document.getElementById("signout-btn").addEventListener("click", function () { sb.auth.signOut(); });
     document.querySelectorAll("[data-date]").forEach(function (b) { b.addEventListener("click", function () { state.selectedDate = b.getAttribute("data-date"); render(); }); });
     document.getElementById("week-prev").addEventListener("click", function () { state.weekAnchor = isoDate(addDays(start, -7)); render(); });
     document.getElementById("week-next").addEventListener("click", function () { state.weekAnchor = isoDate(addDays(start, 7)); render(); });
@@ -730,15 +776,66 @@
     html += "</div>" + agendaHtml(state.selectedDate);
     contentEl.innerHTML = html;
     wireCommon();
-    document.getElementById("signout-btn").addEventListener("click", function () { sb.auth.signOut(); });
     document.querySelectorAll("[data-date]").forEach(function (b) { b.addEventListener("click", function () { state.selectedDate = b.getAttribute("data-date"); render(); }); });
     document.getElementById("month-prev").addEventListener("click", function () { state.monthAnchor = isoDate(new Date(year, month - 1, 1)); render(); });
     document.getElementById("month-next").addEventListener("click", function () { state.monthAnchor = isoDate(new Date(year, month + 1, 1)); render(); });
   }
 
+  function renderFolders() {
+    if (state.folderDrill) { renderFolderDetail(); return; }
+    var map = foldersByCategory();
+    var html = '<div class="top-row"><div class="eyebrow">FOLDERS</div>' + topRowActionsHtml() + '</div>';
+    html += '<div class="greeting">Folders</div>';
+    ["work", "personal"].forEach(function (cat) {
+      var names = Object.keys(map[cat]).sort();
+      html += '<div class="section-label">' + (cat === "work" ? "Work" : "Personal") + "</div>";
+      if (names.length) {
+        names.forEach(function (name) {
+          var info = map[cat][name];
+          html += '<div class="card folder-row" data-folder-cat="' + cat + '" data-folder-name="' + escapeHtml(name) + '">' +
+            '<span style="color:var(--' + cat + ');display:flex;">' + ICONS.folder + '</span>' +
+            '<span class="folder-name">' + escapeHtml(name) + '</span>' +
+            '<span class="mono folder-count">' + info.open + "/" + info.total + "</span></div>";
+        });
+      } else {
+        html += '<div class="empty-note">No ' + cat + ' folders yet — add one from a task’s detail screen.</div>';
+      }
+    });
+    contentEl.innerHTML = html;
+    wireCommon();
+    document.querySelectorAll("[data-folder-name]").forEach(function (el) {
+      el.addEventListener("click", function () {
+        state.folderDrill = { category: el.getAttribute("data-folder-cat"), folder: el.getAttribute("data-folder-name") };
+        render();
+      });
+    });
+  }
+
+  function renderFolderDetail() {
+    var cat = state.folderDrill.category;
+    var folder = state.folderDrill.folder;
+    var tasks = state.tasks.filter(function (t) { return !t.parentTaskId && t.category === cat && t.folder === folder; })
+      .sort(function (a, b) {
+        if (a.status !== b.status) return a.status === "done" ? 1 : -1;
+        var ta = hasTime(a.dueAt) ? a.dueAt.slice(11, 16) : "99:99";
+        var tb = hasTime(b.dueAt) ? b.dueAt.slice(11, 16) : "99:99";
+        return ta < tb ? -1 : ta > tb ? 1 : 0;
+      });
+    var html = '<div class="top-row"><button class="signout-link" id="folder-back">‹ Folders</button>' + topRowActionsHtml() + "</div>";
+    html += '<div class="greeting">' + escapeHtml(folder) + "</div>";
+    html += '<div class="chip-row"><span class="chip ' + cat + ' active" style="cursor:default;">' + (cat === "work" ? "Work" : "Personal") + "</span></div>";
+    if (tasks.length) tasks.forEach(function (t) { html += taskRowHtml(t); });
+    else html += '<div class="empty-note">No tasks in this folder right now.</div>';
+    contentEl.innerHTML = html;
+    wireCommon();
+    document.getElementById("folder-back").addEventListener("click", function () { state.folderDrill = null; render(); });
+  }
+
   function wireCommon() {
     var remindersBtn = document.getElementById("reminders-btn");
     if (remindersBtn) remindersBtn.addEventListener("click", togglePush);
+    var signoutBtn = document.getElementById("signout-btn");
+    if (signoutBtn) signoutBtn.addEventListener("click", function () { sb.auth.signOut(); });
     document.querySelectorAll("[data-toggle]").forEach(function (b) {
       b.addEventListener("click", function (e) {
         e.stopPropagation();
@@ -763,7 +860,11 @@
     detailEl.classList.add("open");
     detailCatBtn.className = "cat-pill " + task.category;
     detailCatBtn.textContent = task.category === "work" ? "Work" : "Personal";
-    detailCatBtn.onclick = function () { updateTask(task.id, { category: task.category === "work" ? "personal" : "work" }); };
+    detailCatBtn.onclick = function () {
+      // Folders are sub-categories of Work/Personal, so a folder from the
+      // old category wouldn't make sense under the new one - clear it.
+      updateTask(task.id, { category: task.category === "work" ? "personal" : "work", folder: null });
+    };
 
     var kids = childrenOf(task.id);
     var doneCount = kids.filter(function (k) { return k.status === "done"; }).length;
@@ -780,6 +881,10 @@
       '<select id="f-priority"><option value="low"' + (task.priority === "low" ? " selected" : "") + '>Low priority</option>' +
       '<option value="medium"' + (task.priority === "medium" ? " selected" : "") + '>Medium priority</option>' +
       '<option value="high"' + (task.priority === "high" ? " selected" : "") + ">High priority</option></select></div>";
+    var folderListId = "f-folder-options";
+    html += '<div class="meta-row"><span style="color:var(--ink-faint);display:inline-flex;">' + ICONS.folder + "</span>" +
+      '<input type="text" class="folder-input" id="f-folder" list="' + folderListId + '" placeholder="No folder" value="' + escapeHtml(task.folder || "") + '" />' +
+      '<datalist id="' + folderListId + '">' + folderNamesFor(task.category).map(function (f) { return '<option value="' + escapeHtml(f) + '"></option>'; }).join("") + "</datalist></div>";
     if (note) {
       html += '<div class="link-note" id="linked-note"><span style="display:flex;color:var(--ink-faint);">' + ICONS.note + '</span>' +
         '<span class="note-text" id="linked-note-text" style="flex:1;">From note · “' + escapeHtml(note.body) + '”</span></div>';
@@ -816,6 +921,7 @@
     detailField.addEventListener("change", function (e) { updateTask(task.id, { detail: e.target.value }); });
     document.getElementById("f-due").addEventListener("change", function (e) { updateTask(task.id, { dueAt: e.target.value || null }); });
     document.getElementById("f-priority").addEventListener("change", function (e) { updateTask(task.id, { priority: e.target.value }); });
+    document.getElementById("f-folder").addEventListener("change", function (e) { updateTask(task.id, { folder: e.target.value.trim() || null }); });
     var clearBtn = document.getElementById("f-clear-due");
     if (clearBtn) clearBtn.addEventListener("click", function () { updateTask(task.id, { dueAt: null }); });
     detailContentEl.querySelectorAll("[data-toggle]").forEach(function (b) {
